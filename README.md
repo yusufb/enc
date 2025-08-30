@@ -1,6 +1,8 @@
 # enc - Local & offline text encryption/decryption
 
-`enc.html` is a tiny, dependency-free tool to quickly encrypt and decrypt small pieces of text (notes, secrets, configuration snippets) locally in your browser.
+`enc.html` is a tiny, dependency-free tool to quickly encrypt and decrypt small pieces of text (notes, secrets, configuration snippets) locally in your browser. 
+
+([Try it](https://yusufb.github.io/enc/enc.html))
 
 ![Tutorial](./tutorial.gif)
 
