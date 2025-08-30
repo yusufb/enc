@@ -2,6 +2,8 @@
 
 `enc.html` is a tiny, dependency-free tool to quickly encrypt and decrypt small pieces of text (notes, secrets, configuration snippets) locally in your browser.
 
+![Tutorial](./tutorial.gif)
+
 It is single-file, client-only HTML+JavaScript tool that encrypts and decrypts text in your browser using a passphrase: no servers, no backend/network requests, and no telemetry. All key derivation, encryption and decryption are executed by the browser's `crypto.subtle` APIs locally.
 
 Obviously, **not intended** as a full-featured password manager, secret vault, or as a replacement for audited, production-grade crypto systems. If you want stronger KDFs (Argon2, scrypt), include a WebAssembly or JS implementation. PBKDF2 was chosen for native browser support.
