@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>enc</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔒</text></svg>">
+    <style>
+        :root {
+            --bg: #0f1724;
+            --card: #0b1220;
+            --muted: #9aa4b2;
+            --accent: #60a5fa;
+            --glass: rgba(255, 255, 255, 0.03)
+        }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+            font-family: Inter, ui-sans-serif, system-ui, Segoe UI, Roboto, "Helvetica Neue", Arial;
+            background: linear-gradient(180deg, #071027 0%, #0b1220 100%);
+            color: #e6eef6
+        }
+
+        .wrap {
+            max-width: 1440px;
+            margin: 40px auto;
+            padding: 28px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
+            border-radius: 12px;
+            box-shadow: 0 6px 30px rgba(2, 6, 23, 0.7);
+        }
+
+        .controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 12px
+        }
+
+        .keyinput {
+            flex: 1;
+            display: flex;
+            gap: 8px
+        }
+
+        input[type="password"], input[type="text"] {
+            background: var(--glass);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            padding: 10px 12px;
+            border-radius: 8px;
+            color: #e6eef6;
+            width: 100%;
+            outline: none;
+            font-size: 14px;
+        }
+
+        label.small {
+            color: var(--muted);
+            font-size: 12px;
+            margin-right: 8px
+        }
+
+        .buttons {
+            display: flex;
+            gap: 8px
+        }
+
+        button {
+            background: linear-gradient(180deg, var(--accent), #3b82f6);
+            border: none;
+            padding: 10px 14px;
+            color: #022047;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 6px 18px rgba(96, 165, 250, 0.12);
+        }
+
+        button.secondary {
+            background: transparent;
+            color: var(--muted);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            box-shadow: none;
+        }
+
+        textarea#data {
+            width: 100%;
+            min-height: 500px;
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            padding: 14px;
+            border-radius: 10px;
+            color: #e6eef6;
+            font-size: 14px;
+            resize: vertical
+        }
+
+        .status {
+            margin-top: 10px;
+            color: var(--muted);
+            font-size: 13px;
+            display: flex;
+            gap: 10px;
+            align-items: center
+        }
+
+        .error {
+            color: #fb7185
+        }
+
+        @media (max-width: 600px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch
+            }
+
+            .buttons {
+                width: 100%
+            }
+
+            button {
+                width: 100%
+            }
+
+            .keyinput {
+                width: 100%
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="wrap" role="main">
+    <div class="controls">
+        <div class="keyinput" style="flex:1">
+            <input id="title" type="text" placeholder="Public Title" autocomplete="off"/>
+        </div>
+
+        <div class="keyinput" style="flex:1">
+            <input id="password" type="password" placeholder="Key" autocomplete="off"/>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px">
+            <label style="color:var(--muted);font-size:12px">
+                <input id="showPwd" type="checkbox"/> show
+            </label>
+        </div>
+    </div>
+
+    <textarea id="data" spellcheck="false" placeholder=""></textarea>
+
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <div class="buttons">
+            <button id="processBtn">Process</button>
+        </div>
+        <div style="display:flex;gap:8px">
+            <button id="copyBtn" class="secondary">Copy</button>
+            <button id="clearBtn" class="secondary">Clear</button>
+        </div>
+    </div>
+
+    <div class="status" id="status">
+        <span id="msg" style="margin-left:8px;">Ready</span>
+    </div>
+
+</div>
+
+<script>
+    (() => {
+        // Config
+        const ITERATIONS = 1000 * 1000;   // PBKDF2 iterations (adjustable). Higher = stronger but slower.
+        const SALT_BYTES = 16;            // salt length
+        const IV_BYTES = 12;              // recommended for AES-GCM
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+
+        // Helpers: ArrayBuffer <-> base64
+        function arrayBufferToBase64(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            const chunk = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunk) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+            }
+            return btoa(binary);
+        }
+
+        function base64ToArrayBuffer(base64) {
+            const binary = atob(base64);
+            const len = binary.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+            return bytes.buffer;
+        }
+
+        // Generate random bytes
+        function randomBytes(len) {
+            const b = new Uint8Array(len);
+            crypto.getRandomValues(b);
+            return b;
+        }
+
+        function defaultTitle() {
+            return `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+        }
+
+        async function deriveKey(password, salt, iterations = ITERATIONS) {
+            if (typeof password !== 'string') throw new Error('Password must be a string');
+            // Import the password as a key for PBKDF2
+            const baseKey = await crypto.subtle.importKey(
+                'raw',
+                encoder.encode(password),
+                {name: 'PBKDF2'},
+                false,
+                ['deriveKey']
+            );
+            // Derive an AES-GCM 256-bit key
+            const derivedKey = await crypto.subtle.deriveKey(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: iterations,
+                    hash: 'SHA-256'
+                },
+                baseKey,
+                {name: 'AES-GCM', length: 256},
+                false,
+                ['encrypt', 'decrypt']
+            );
+            return derivedKey;
+        }
+
+        async function encryptText(plaintext, password, title) {
+            if (!password) throw new Error('Password is required for encryption');
+            const salt = randomBytes(SALT_BYTES);
+            const iv = randomBytes(IV_BYTES);
+            const key = await deriveKey(password, salt, ITERATIONS);
+            const ctBuffer = await crypto.subtle.encrypt(
+                {name: 'AES-GCM', iv: iv},
+                key,
+                encoder.encode(plaintext)
+            );
+            const payload = {
+                title: title,
+                v: 1,
+                kdf: 'PBKDF2',
+                alg: 'AES-GCM',
+                iter: ITERATIONS,
+                salt: arrayBufferToBase64(salt.buffer),
+                iv: arrayBufferToBase64(iv.buffer),
+                ct: arrayBufferToBase64(ctBuffer)
+            };
+            return JSON.stringify(payload);
+        }
+
+        async function decryptText(pkgString, password) {
+            if (!password) throw new Error('Password is required for decryption');
+            let pkg;
+            try {
+                pkg = JSON.parse(pkgString);
+            } catch (e) {
+                throw new Error('Input is not valid JSON');
+            }
+            if (!pkg.ct || !pkg.salt || !pkg.iv) throw new Error('JSON does not contain expected fields (ct, salt, iv)');
+            if (!pkg.iter) pkg.iter = ITERATIONS; // fallback
+            const saltBuf = base64ToArrayBuffer(pkg.salt);
+            const ivBuf = base64ToArrayBuffer(pkg.iv);
+            const ctBuf = base64ToArrayBuffer(pkg.ct);
+            const key = await deriveKey(password, saltBuf, pkg.iter);
+            try {
+                const plainBuf = await crypto.subtle.decrypt(
+                    {name: 'AES-GCM', iv: new Uint8Array(ivBuf)},
+                    key,
+                    ctBuf
+                );
+                return [decoder.decode(plainBuf), pkg.title];
+            } catch (e) {
+                // Common failure: wrong password or tampered ciphertext
+                throw new Error('Decryption failed, wrong password or corrupted data');
+            }
+        }
+
+        const dataEl = document.getElementById('data');
+        const pwdEl = document.getElementById('password');
+        const titleEl = document.getElementById('title');
+        const processBtn = document.getElementById('processBtn');
+        const copyBtn = document.getElementById('copyBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const msgEl = document.getElementById('msg');
+        const showPwd = document.getElementById('showPwd');
+
+        titleEl.value = defaultTitle();
+
+        function setStatus(text, isError = false) {
+            msgEl.textContent = text;
+            msgEl.className = isError ? 'error' : '';
+        }
+
+        function looksLikeEncryptedPackage(text) {
+            try {
+                const pkg = JSON.parse(text);
+                return pkg && typeof pkg === 'object' && pkg.ct && pkg.salt && pkg.iv;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        async function doProcess() {
+            const text = dataEl.value;
+            if (!text) {
+                setStatus('Nothing to process', true);
+                return;
+            }
+            const pwd = pwdEl.value;
+            if (!pwd) {
+                setStatus('Enter a key', true);
+                return;
+            }
+
+            if (looksLikeEncryptedPackage(text)) {
+                setStatus('Detected JSON package, attempting decrypt...');
+                disable(true);
+                try {
+                    const decData = await decryptText(text, pwd);
+                    const plain = decData[0];
+                    const title = decData[1];
+                    dataEl.value = plain;
+                    if (title) titleEl.value = title;
+                    setStatus('Decryption successful.');
+                } catch (err) {
+                    setStatus(err.message || 'Decryption error', true);
+                } finally {
+                    disable(false);
+                }
+            } else {
+                const title = titleEl.value;
+                if (!title) {
+                    setStatus('Enter a title', true);
+                    return;
+                }
+
+                setStatus('Plaintext detected, encrypting...');
+                disable(true);
+                try {
+                    const out = await encryptText(text, pwd, title);
+                    dataEl.value = out;
+                    setStatus('Encrypted');
+                } catch (err) {
+                    setStatus(err.message || 'Encryption error', true);
+                } finally {
+                    disable(false);
+                }
+            }
+        }
+
+        function disable(flag) {
+            processBtn.disabled = flag;
+            copyBtn.disabled = flag;
+            clearBtn.disabled = flag;
+        }
+
+        copyBtn.addEventListener('click', async () => {
+            const text = dataEl.value;
+            if (!text) {
+                setStatus('Nothing to copy', true);
+                return;
+            }
+            if (!looksLikeEncryptedPackage(text)) {
+                setStatus('Only encrypted text can be copied', true);
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(text);
+                setStatus('Copied to clipboard.');
+            } catch (e) {
+                setStatus('Copy failed (browser blocked clipboard).', true);
+            }
+        });
+
+        clearBtn.addEventListener('click', () => {
+            dataEl.value = '';
+            pwdEl.value = '';
+            titleEl.value = defaultTitle();
+            setStatus('Cleared');
+        });
+
+        processBtn.addEventListener('click', doProcess);
+
+        showPwd.addEventListener('change', () => {
+            pwdEl.type = showPwd.checked ? 'text' : 'password';
+        });
+
+        // Keyboard shortcuts: Ctrl/Cmd+Enter => process
+        dataEl.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                doProcess();
+            }
+        });
+
+        (function checkApi() {
+            if (!window.crypto || !crypto.subtle) {
+                setStatus('Web Crypto API unavailable in this browser, this page needs a modern browser.', true);
+                processBtn.disabled = true;
+            }
+        })();
+
+    })();
+</script>
+</body>
+</html>
