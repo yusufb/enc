@@ -289,6 +289,8 @@
         const msgEl = document.getElementById('msg');
         const showPwd = document.getElementById('showPwd');
 
+        let active = dataEl.value.trim() !== '';
+
         titleEl.value = defaultTitle();
 
         function setStatus(text, isError = false) {
@@ -359,6 +361,13 @@
             clearBtn.disabled = flag;
         }
 
+        function clear() {
+            dataEl.value = '';
+            pwdEl.value = '';
+            titleEl.value = defaultTitle();
+            active = false;
+        }
+
         copyBtn.addEventListener('click', async () => {
             const text = dataEl.value;
             if (!text) {
@@ -378,9 +387,7 @@
         });
 
         clearBtn.addEventListener('click', () => {
-            dataEl.value = '';
-            pwdEl.value = '';
-            titleEl.value = defaultTitle();
+            clear();
             setStatus('Cleared');
         });
 
@@ -388,6 +395,18 @@
 
         showPwd.addEventListener('change', () => {
             pwdEl.type = showPwd.checked ? 'text' : 'password';
+        });
+
+        dataEl.addEventListener('input', () => {
+            active = dataEl.value.trim() !== '';
+        });
+
+        window.addEventListener('beforeunload', (e) => {
+            if (!active) return;
+
+            e.preventDefault();
+            e.returnValue = '';
+            return '';
         });
 
         // Keyboard shortcuts: Ctrl/Cmd+Enter => process
